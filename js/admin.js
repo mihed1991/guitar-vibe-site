@@ -1,10 +1,19 @@
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'guitar-vibe-content-v1';
-  const PASSWORD_KEY = 'guitar-vibe-admin-password-v1';
-  const SESSION_KEY = 'guitar-vibe-admin-unlocked';
-  const TELEGRAM_SETTINGS_KEY = 'guitar-vibe-telegram-settings-v1';
+  // GitHub Pages projects share one browser origin. Scope all locally stored
+  // admin data to this project so another Guitar Vibe deployment cannot
+  // overwrite this page with its saved settings.
+  const STORAGE_SCOPE = (() => {
+    const project = location.protocol === 'file:'
+      ? 'local-preview'
+      : (location.pathname.split('/').filter(Boolean)[0] || 'root');
+    return `${location.host || 'local'}-${project}`.replace(/[^a-z0-9_-]/gi, '-');
+  })();
+  const STORAGE_KEY = `guitar-vibe-content-v2-${STORAGE_SCOPE}`;
+  const PASSWORD_KEY = `guitar-vibe-admin-password-v2-${STORAGE_SCOPE}`;
+  const SESSION_KEY = `guitar-vibe-admin-unlocked-v2-${STORAGE_SCOPE}`;
+  const TELEGRAM_SETTINGS_KEY = `guitar-vibe-telegram-settings-v2-${STORAGE_SCOPE}`;
   const DEFAULT_PASSWORD = '020304';
 
   const sections = [
