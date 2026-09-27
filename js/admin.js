@@ -199,6 +199,7 @@
   ];
 
   const defaults = Object.fromEntries(entries.map(entry=>[entry.key,readEntry(entry)]));
+  const defaultFaqItems = readFaqItems(defaults);
   let persisted = readStored();
   let model = normalizeModel(persisted);
   let draft = clone(model);
@@ -257,12 +258,26 @@
     entries.filter(entry=>entry.mode==='list'||entry.mode==='inlineList').forEach(entry=>{
       if(entry.key in content)content[entry.key]=splitList(content[entry.key]).map(proofreadLegacyText).join('\n');
     });
+    const faqItems=normalizeFaqItems(source?.faqItems,content);
     const contacts=Array.isArray(source&&source.contacts)?source.contacts.map(contact=>{
       const preset=defaultContacts.find(item=>item.label===contact.label);
       const image=!contact.image||isExpiredFigmaAsset(contact.image)?(preset?.image||''):contact.image;
       return {...contact,image};
     }):clone(defaultContacts);
-    return { content, contacts, hiddenItems:{...(source&&source.hiddenItems||{})}, hiddenSections:{...(source&&source.hiddenSections||{})}, hiddenElements:{...(source&&source.hiddenElements||{})} };
+    return { content, faqItems, contacts, hiddenItems:{...(source&&source.hiddenItems||{})}, hiddenSections:{...(source&&source.hiddenSections||{})}, hiddenElements:{...(source&&source.hiddenElements||{})} };
+  }
+  function readFaqItems(content){
+    return Array.from({length:6},(_,index)=>({
+      question:String(content[`faq${index+1}Question`]||'').trim(),
+      answer:String(content[`faq${index+1}Answer`]||'').trim()
+    }));
+  }
+  function normalizeFaqItems(items,content){
+    const source=Array.isArray(items)&&items.length?items:readFaqItems(content);
+    return source.map(item=>({
+      question:proofreadLegacyText(String(item?.question||'').trim()),
+      answer:proofreadLegacyText(String(item?.answer||'').trim())
+    })).filter(item=>item.question||item.answer);
   }
   function isExpiredFigmaAsset(value){return /^https:\/\/www\.figma\.com\/api\/mcp\/asset\//i.test(String(value||''))}
   function clone(value){return JSON.parse(JSON.stringify(value))}
@@ -360,6 +375,7 @@
   }
   function applyModel(next){
     entries.forEach(entry=>applyEntry(entry,next.content[entry.key]));
+    renderFaqItems(next.faqItems);
     window.refreshAboutGallery?.();
     applyRepeaterVisibility(next.hiddenItems||{});
     applySectionVisibility(next.hiddenSections||{});
@@ -367,6 +383,29 @@
     reflowMobileStage();
     renderContacts(next.contacts);
     document.title=next.content.pageTitle||'Guitar Vibe';
+  }
+  function renderFaqItems(items){
+    const safeItems=Array.isArray(items)?items:defaultFaqItems;
+    [['.faq-grid'],['.m-faq']].forEach(([selector])=>{
+      const container=document.querySelector(selector);
+      if(!container)return;
+      container.querySelectorAll('details').forEach(item=>item.remove());
+      safeItems.forEach(item=>{
+        const details=document.createElement('details');
+        const summary=document.createElement('summary');
+        const answer=document.createElement('p');
+        summary.textContent=item.question||'Новый вопрос';
+        answer.textContent=item.answer||'Введите ответ.';
+        details.append(summary,answer);
+        details.addEventListener('toggle',()=>{
+          window.reflowDesktopFaq?.();
+          document.dispatchEvent(new Event('faq-layout-change'));
+        });
+        container.append(details);
+      });
+    });
+    window.reflowDesktopFaq?.();
+    document.dispatchEvent(new Event('faq-layout-change'));
   }
   function applyRepeaterVisibility(hiddenItems){
     Object.entries(repeaters).forEach(([section,group])=>group.items.forEach((item,index)=>{
@@ -538,7 +577,7 @@
     const content=workspace.querySelector('.admin-content');content.replaceChildren();
     const help=document.createElement('p');help.className='admin-help';help.textContent=section.hint;content.append(help);
     if(publicSections[section.id]){const hidden=Boolean(draft.hiddenSections[section.id]),toggle=document.createElement('button');toggle.type='button';toggle.className=hidden?'admin-secondary admin-section-toggle':'admin-danger admin-section-toggle';toggle.textContent=hidden?'+ Добавить блок на сайт':'Удалить блок с сайта';toggle.addEventListener('click',()=>{draft.hiddenSections[section.id]=!hidden;markDirty();renderSection()});content.append(toggle)}
-    if(section.id==='footer') renderFooterEditor(content); else if(section.id==='telegram') renderTelegramEditor(content); else if(section.id==='security') renderSecurity(content); else if(repeaters[section.id])renderRepeaterEditor(content,section.id);else{renderFields(content,entries.filter(entry=>entry.section===section.id));renderManagedElements(content,section.id)}
+    if(section.id==='footer') renderFooterEditor(content); else if(section.id==='faq') renderFaqEditor(content); else if(section.id==='telegram') renderTelegramEditor(content); else if(section.id==='security') renderSecurity(content); else if(repeaters[section.id])renderRepeaterEditor(content,section.id);else{renderFields(content,entries.filter(entry=>entry.section===section.id));renderManagedElements(content,section.id)}
     updateStatus();
   }
   function renderFields(container,fields){
@@ -572,6 +611,29 @@
       const fields=document.createElement('div');fields.className='admin-fields';item.keys.map(key=>allFields.find(entry=>entry.key===key)).filter(Boolean).forEach(entry=>fields.append(createAdminField(entry)));card.append(fields);list.append(card);
     });
     const hiddenIndex=group.items.findIndex((_,index)=>draft.hiddenItems[section]?.[index]);const add=document.createElement('button');add.type='button';add.className='admin-secondary admin-repeat-add';add.textContent=`+ Добавить ${group.itemName}`;add.disabled=hiddenIndex<0;add.title=hiddenIndex<0?'Все предусмотренные структурой позиции уже используются':'';add.addEventListener('click',()=>{if(hiddenIndex<0)return;setItemHidden(section,hiddenIndex,false);markDirty();renderSection()});list.append(add);
+  }
+  function renderFaqEditor(container){
+    renderFields(container,entries.filter(entry=>entry.section==='faq'&&entry.key==='faqLabel'));
+    const list=document.createElement('div');list.className='admin-repeat-list';container.append(list);
+    draft.faqItems.forEach((item,index)=>{
+      const card=document.createElement('section');card.className='admin-repeat-card';
+      const head=document.createElement('div');head.className='admin-repeat-head';
+      const title=document.createElement('h3');title.textContent=`Вопрос ${index+1}`;
+      const remove=document.createElement('button');remove.type='button';remove.className='admin-danger';remove.textContent='Удалить';
+      remove.addEventListener('click',()=>{draft.faqItems.splice(index,1);markDirty();renderSection()});
+      head.append(title,remove);card.append(head);
+      [['question','Вопрос',false],['answer','Ответ',true]].forEach(([key,label,multiline])=>{
+        const wrap=document.createElement('div');wrap.className='admin-field wide';
+        const fieldLabel=document.createElement('label');fieldLabel.textContent=label;
+        const input=document.createElement(multiline?'textarea':'input');input.className=multiline?'admin-textarea':'admin-input';input.value=item[key]||'';
+        input.addEventListener('input',()=>{draft.faqItems[index][key]=input.value;markDirty()});
+        wrap.append(fieldLabel,input);card.append(wrap);
+      });
+      list.append(card);
+    });
+    const add=document.createElement('button');add.type='button';add.className='admin-secondary admin-repeat-add';add.textContent='+ Добавить вопрос';
+    add.addEventListener('click',()=>{draft.faqItems.push({question:'Новый вопрос',answer:'Введите ответ.'});markDirty();renderSection()});
+    list.append(add);
   }
   function setItemHidden(section,index,value){if(!draft.hiddenItems[section])draft.hiddenItems[section]=[];draft.hiddenItems[section][index]=value}
   function imageFileToDataUrl(file,maxSize=900){
@@ -661,6 +723,6 @@
   }
   function resetContent(){
     if(!window.confirm('Вернуть весь контент и контакты к исходным значениям?'))return;
-    draft={content:{...defaults},contacts:clone(defaultContacts),hiddenItems:{},hiddenSections:{},hiddenElements:{}};model=clone(draft);localStorage.removeItem(STORAGE_KEY);applyModel(model);dirty=false;renderSection();
+    draft={content:{...defaults},faqItems:clone(defaultFaqItems),contacts:clone(defaultContacts),hiddenItems:{},hiddenSections:{},hiddenElements:{}};model=clone(draft);localStorage.removeItem(STORAGE_KEY);applyModel(model);dirty=false;renderSection();
   }
 })();
