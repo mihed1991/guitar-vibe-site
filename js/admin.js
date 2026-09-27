@@ -394,6 +394,14 @@
     const pricingItems=Array.from(document.querySelectorAll('.m-price-grid .m-price-card')).filter(isShown).length;
     const pricingGrid=document.querySelector('.m-price-grid'),pricingRows=Math.ceil(pricingItems/2),pricingHeight=pricingRows?pricingRows*260+(pricingRows-1)*16:0;
     if(pricingGrid)pricingGrid.style.height=`${pricingHeight}px`;
+    const faq=document.querySelector('.m-faq');
+    let faqHeight=585;
+    if(faq){
+      const previousHeight=faq.style.height;
+      faq.style.height='auto';
+      faqHeight=Math.max(faqHeight,Math.ceil(faq.scrollHeight));
+      faq.style.height=previousHeight;
+    }
     const sections=[
       {selector:'.m-formats',height:formatsList+101,gap:0},
       {selector:'.m-about',height:570.333,gap:0},
@@ -401,7 +409,7 @@
       {selector:'.m-instruments',height:instrumentsList+161,gap:0},
       {selector:'.m-reviews',height:reviewsList+121,gap:0},
       {selector:'.m-pricing',height:pricingHeight+117,gap:0},
-      {selector:'.m-faq',height:585,gap:0},
+      {selector:'.m-faq',height:faqHeight,gap:0},
       {selector:'.m-teacher',height:321,gap:0},
       {selector:'.m-cta',height:215,gap:0},
       {selector:'.m-footer',height:234,gap:0}
@@ -421,6 +429,8 @@
     wrap.dataset.contentHeight=String(cursor);
     window.syncMobileStage?.();
   }
+  window.reflowMobileStage=reflowMobileStage;
+  document.addEventListener('faq-layout-change',reflowMobileStage);
   window.addEventListener('resize',reflowMobileStage,{passive:true});
   function updateMapLink(address){
     document.querySelectorAll('#mapAddressLink,#mobileMapLink').forEach(link=>{
